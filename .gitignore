@@ -14,7 +14,10 @@ dist-ssr
 .env 
 .env.*
 .env.*.local
-dataset/
+
+# Dataset
+project/BlockchainFraud/Dataset/*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

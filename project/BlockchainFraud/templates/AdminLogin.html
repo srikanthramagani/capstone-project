@@ -1,0 +1,133 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Admin Login | Fraud Detection</title>
+	<link rel="stylesheet" href="{{ url_for('static', filename='default.css') }}">
+	<style>
+		body {
+			background: linear-gradient(120deg, #137cbd 0%, #48aff0 100%);
+			min-height: 100vh;
+			margin: 0;
+			font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+		}
+		.login-container {
+			max-width: 400px;
+			margin: 60px auto;
+			background: #fff;
+			border-radius: 16px;
+			box-shadow: 0 4px 24px rgba(19,124,189,0.13);
+			padding: 40px 32px 32px 32px;
+		}
+		.login-header {
+			text-align: center;
+			margin-bottom: 32px;
+		}
+		.login-header h2 {
+			margin: 0;
+			font-size: 2rem;
+			color: #137cbd;
+			font-weight: 700;
+		}
+		.login-header p {
+			color: #444;
+			font-size: 1rem;
+			margin-top: 8px;
+		}
+		.login-form label {
+			display: block;
+			margin-bottom: 8px;
+			color: #137cbd;
+			font-weight: 600;
+		}
+		.login-form input[type="text"],
+		.login-form input[type="password"] {
+			width: 100%;
+			padding: 10px;
+			margin-bottom: 18px;
+			border: 1px solid #bcdffb;
+			border-radius: 6px;
+			font-size: 1rem;
+			background: #f8fafc;
+			transition: border 0.2s;
+		}
+		.login-form input[type="text"]:focus,
+		.login-form input[type="password"]:focus {
+			border: 1.5px solid #137cbd;
+			outline: none;
+		}
+		.login-form button {
+			width: 100%;
+			background: #137cbd;
+			color: #fff;
+			border: none;
+			border-radius: 6px;
+			padding: 12px;
+			font-size: 1.1rem;
+			font-weight: 600;
+			cursor: pointer;
+			box-shadow: 0 2px 8px rgba(19,124,189,0.09);
+			transition: background 0.2s;
+		}
+		.login-form button:hover {
+			background: #106ba3;
+		}
+		.login-msg {
+			text-align: center;
+			color: #106ba3;
+			margin-bottom: 18px;
+			font-size: 1rem;
+		}
+		.login-logo {
+			display: flex;
+			justify-content: center;
+			margin-bottom: 24px;
+		}
+		.login-logo img {
+			max-width: 120px;
+			border-radius: 12px;
+			box-shadow: 0 2px 8px rgba(19,124,189,0.09);
+		}
+	</style>
+	<script>
+		function validate(formObj) {
+			if(formObj.t1.value.length==0) {
+				alert("Please Enter username");
+				formObj.t1.focus();
+				return false;
+			}
+			if(formObj.t2.value.length==0) {
+				alert("Please Enter password");
+				formObj.t2.focus();
+				return false;
+			}
+			return true;
+		}
+	</script>
+</head>
+<body>
+	<div class="login-container">
+		<div class="login-header">
+			<div class="login-logo">
+				<img src="{{ url_for('static', filename='images/tra.jpg') }}" alt="Fraud Detection Logo">
+			</div>
+			<h2>Admin Login</h2>
+			<p>Blockchain &amp; Machine Learning for Fraud Detection</p>
+		</div>
+		<form class="login-form" name="f1" method="post" action="/AdminLoginAction" onsubmit="return validate(this);">
+			{% if msg %}
+			<div class="login-msg">{{ msg|safe }}</div>
+			{% endif %}
+			<label for="t1">Username</label>
+			<input type="text" name="t1" id="t1" placeholder="Enter your username" autocomplete="username">
+			<label for="t2">Password</label>
+			<input type="password" name="t2" id="t2" placeholder="Enter your password" autocomplete="current-password">
+			<button type="submit">Login</button>
+		</form>
+	</div>
+</body>
+</html>
+
+

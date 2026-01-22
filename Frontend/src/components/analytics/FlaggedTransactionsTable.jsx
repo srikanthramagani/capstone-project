@@ -136,10 +136,27 @@ const FlaggedTransactionsTable = () => {
     <>
       <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-900">Flagged Transactions</h3>
-          <p className="text-sm text-gray-600 mt-1">
-            Transactions requiring manual review based on ML detection
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">Flagged Transactions</h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Transactions requiring manual review based on ML detection
+              </p>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+                <span className="w-1.5 h-1.5 bg-green-600 rounded-full mr-1.5"></span>
+                MongoDB Live
+              </span>
+              <button 
+                onClick={loadFlaggedTransactions}
+                className="inline-flex items-center px-3 py-1 border border-gray-300 rounded-md text-xs font-medium text-gray-700 bg-white hover:bg-gray-50"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Refresh
+              </button>
+            </div>
+          </div>
         </div>
 
         <Table>

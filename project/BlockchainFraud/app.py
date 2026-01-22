@@ -311,6 +311,42 @@ def upload_and_predict():
 def health_check():
     return jsonify({'status': 'healthy', 'message': 'Fraud detection API is running'})
 
+@app.route('/debug/mongodb', methods=['GET'])
+def debug_mongodb():
+    """Debug endpoint to check MongoDB data"""
+    try:
+        # Check if MongoDB is connected
+        if not mongodb_service.connected:
+            return jsonify({'error': 'MongoDB not connected'}), 500
+        
+        # Get total count
+        total_count = mongodb_service.transactions_collection.count_documents({})
+        
+        # Get sample transaction
+        sample = mongodb_service.transactions_collection.find_one()
+        
+        # Get unique transaction types
+        types = mongodb_service.transactions_collection.distinct('type')
+        
+        # Get fraud/normal distribution
+        fraud_count = mongodb_service.transactions_collection.count_documents({'isFraud': 1})
+        normal_count = mongodb_service.transactions_collection.count_documents({'isFraud': 0})
+        
+        return jsonify({
+            'connected': True,
+            'totalTransactions': total_count,
+            'fraudTransactions': fraud_count,
+            'normalTransactions': normal_count,
+            'transactionTypes': types,
+            'sampleTransaction': {
+                'type': sample.get('type') if sample else None,
+                'amount': sample.get('amount') if sample else None,
+                'isFraud': sample.get('isFraud') if sample else None
+            } if sample else None
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/stock-data', methods=['GET'])
 def get_stock_data():
     """Return sample stock data for live analysis"""
@@ -609,8 +645,15 @@ def get_transactions():
 def get_analytics_charts():
     """Return chart data for analytics page FROM MONGODB"""
     try:
+        # First, check if we have any data at all
+        total_in_db = mongodb_service.transactions_collection.count_documents({})
+        print(f"\n{'='*80}")
+        print(f"📊 ANALYTICS CHARTS REQUEST")
+        print(f"   Total documents in MongoDB: {total_in_db}")
+        
         # Get stats from MongoDB
         mongo_stats = mongodb_service.get_transaction_stats()
+        print(f"   MongoDB stats: {mongo_stats}")
         
         if not mongo_stats or mongo_stats.get('totalTransactions', 0) == 0:
             # Return empty structure if no data
@@ -637,54 +680,83 @@ def get_analytics_charts():
         fraud_count = mongo_stats.get('fraudTransactions', 0)
         normal_count = mongo_stats.get('normalTransactions', 0)
         
+        print(f"   Fraud count: {fraud_count}, Normal count: {normal_count}")
+        
         # Get transaction type distribution from MongoDB
         try:
             pipeline = [
+                # Filter out documents without transactionType field or where it's null
+                {'$match': {'transactionType': {'$exists': True, '$ne': None}}},
                 {'$group': {
-                    '_id': {'type': '$type', 'isFraud': '$isFraud'},
+                    '_id': {'type': '$transactionType', 'isFraud': '$isFraud'},
                     'count': {'$sum': 1}
                 }}
             ]
             type_results = list(mongodb_service.transactions_collection.aggregate(pipeline))
             
+            print(f"📊 Transaction type aggregation results: {len(type_results)} groups found")
+            
             types_data = {}
             for result in type_results:
-                tx_type = result['_id']['type']
-                is_fraud = result['_id']['isFraud']
-                count = result['count']
+                # Safely extract type and fraud status
+                tx_type = result.get('_id', {}).get('type', 'UNKNOWN')
+                is_fraud = result.get('_id', {}).get('isFraud', 0)
+                count = result.get('count', 0)
                 
-                if tx_type not in types_data:
-                    types_data[tx_type] = {'normal': 0, 'fraud': 0}
-                
-                if is_fraud == 1:
-                    types_data[tx_type]['fraud'] = count
-                else:
-                    types_data[tx_type]['normal'] = count
+                if tx_type and tx_type != 'UNKNOWN':  # Skip unknown types
+                    print(f"   Type: {tx_type}, Fraud: {is_fraud}, Count: {count}")
+                    
+                    if tx_type not in types_data:
+                        types_data[tx_type] = {'normal': 0, 'fraud': 0}
+                    
+                    if is_fraud == 1:
+                        types_data[tx_type]['fraud'] = count
+                    else:
+                        types_data[tx_type]['normal'] = count
             
-            transaction_types = {
-                'labels': list(types_data.keys()) if types_data else ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
-                'normal': [types_data[t]['normal'] for t in types_data.keys()] if types_data else [0] * 5,
-                'fraud': [types_data[t]['fraud'] for t in types_data.keys()] if types_data else [0] * 5
-            }
-        except:
+            if types_data:
+                transaction_types = {
+                    'labels': list(types_data.keys()),
+                    'normal': [types_data[t]['normal'] for t in types_data.keys()],
+                    'fraud': [types_data[t]['fraud'] for t in types_data.keys()]
+                }
+                print(f"✅ Transaction types prepared: {transaction_types['labels']}")
+                print(f"   Normal counts: {transaction_types['normal']}")
+                print(f"   Fraud counts: {transaction_types['fraud']}")
+            else:
+                print("⚠️ No transaction type data found, using defaults")
+                transaction_types = {
+                    'labels': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
+                    'normal': [0] * 5,
+                    'fraud': [0] * 5
+                }
+        except Exception as e:
+            print(f"❌ Error getting transaction types: {e}")
+            import traceback
+            traceback.print_exc()
             transaction_types = {
                 'labels': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
                 'normal': [0] * 5,
                 'fraud': [0] * 5
             }
         
-        # Fraud trend - Calculate from MongoDB data using step field as time buckets
+        # Fraud trend - Calculate from MongoDB data using timestamps grouped into 12 buckets
         try:
-            # Get fraud trend by dividing steps into 12 time buckets
+            # Get fraud trend by month from timestamps
             pipeline = [
+                # Filter out documents without timestamp
+                {'$match': {'timestamp': {'$exists': True, '$ne': None}}},
+                {'$addFields': {
+                    'month': {'$month': '$timestamp'}
+                }},
                 {'$group': {
                     '_id': {
-                        'bucket': {'$mod': [{'$divide': ['$step', 30]}, 12]},
+                        'month': '$month',
                         'isFraud': '$isFraud'
                     },
                     'count': {'$sum': 1}
                 }},
-                {'$sort': {'_id.bucket': 1}}
+                {'$sort': {'_id.month': 1}}
             ]
             trend_results = list(mongodb_service.transactions_collection.aggregate(pipeline))
             
@@ -693,11 +765,16 @@ def get_analytics_charts():
             total_counts = [0] * 12
             
             for result in trend_results:
-                bucket = int(result['_id']['bucket'])
-                if 0 <= bucket < 12:
-                    if result['_id']['isFraud'] == 1:
-                        fraud_counts[bucket] = result['count']
-                    total_counts[bucket] += result['count']
+                month = result.get('_id', {}).get('month')
+                is_fraud = result.get('_id', {}).get('isFraud', 0)
+                count = result.get('count', 0)
+                
+                # Month is 1-12, convert to 0-11 for array index
+                if month is not None and 1 <= month <= 12:
+                    month_idx = month - 1
+                    if is_fraud == 1:
+                        fraud_counts[month_idx] = count
+                    total_counts[month_idx] += count
             
             # Calculate fraud rates
             fraud_rates = []
@@ -709,21 +786,30 @@ def get_analytics_charts():
                     fraud_rates.append(0)
             
             # Convert to thousands for display
-            total_txns_k = [round(count / 1000, 1) for count in total_counts]
+            total_txns_k = [round(count / 1000, 1) if count > 0 else 0 for count in total_counts]
             
             fraud_trend = {
                 'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
                 'fraudRate': fraud_rates,
                 'totalTransactions': total_txns_k
             }
+            print(f"✅ Fraud trend calculated: {sum(total_counts)} total transactions across {sum(1 for x in total_counts if x > 0)} buckets")
         except Exception as e:
-            print(f"Error calculating fraud trend: {e}")
+            print(f"❌ Error calculating fraud trend: {e}")
+            import traceback
+            traceback.print_exc()
             # Fallback to simulated data
             fraud_trend = {
                 'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
                 'fraudRate': [3.2, 2.8, 4.1, 3.7, 2.9, 3.5, 4.2, 3.8, 3.1, 2.7, 3.4, 3.0],
                 'totalTransactions': [12.5, 13.2, 11.8, 14.1, 13.7, 12.9, 15.2, 14.8, 13.5, 16.2, 15.8, 14.3]
             }
+        
+        print(f"\n📈 FINAL RESPONSE DATA:")
+        print(f"   Fraud vs Normal: {normal_count} normal, {fraud_count} fraud")
+        print(f"   Transaction Types: {len(transaction_types['labels'])} types")
+        print(f"   Fraud Trend: {sum(fraud_trend['totalTransactions'])} total transactions")
+        print(f"{'='*80}\n")
         
         return jsonify({
             'success': True,

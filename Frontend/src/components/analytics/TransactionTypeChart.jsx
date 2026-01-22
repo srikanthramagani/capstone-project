@@ -120,13 +120,21 @@ const TransactionTypeChart = () => {
   };
 
   return (
-    <ChartWrapper
-      type="bar"
-      data={data}
-      options={options}
-      title="Transaction Type Distribution"
-      height={350}
-    />
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Transaction Type Distribution</h3>
+        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+          <span className="w-1.5 h-1.5 bg-green-600 rounded-full mr-1.5"></span>
+          Real-time
+        </span>
+      </div>
+      <ChartWrapper
+        type="bar"
+        data={data}
+        options={options}
+        height={350}
+      />
+    </div>
   );
 };
 

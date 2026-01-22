@@ -62,10 +62,23 @@ const FraudAnalytics = () => {
       <div className="space-y-6">
         {/* Page Header */}
         <div className="border-b border-gray-200 pb-4">
-          <h1 className="text-3xl font-bold text-gray-900">Fraud Detection Insights</h1>
-          <p className="mt-2 text-gray-600">
-            Advanced analytics and machine learning insights from real MongoDB data
-          </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Fraud Detection Insights</h1>
+              <p className="mt-2 text-gray-600">
+                Advanced analytics and machine learning insights from real MongoDB data
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                <span className="w-2 h-2 bg-green-600 rounded-full mr-2 animate-pulse"></span>
+                Live Data
+              </span>
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                MongoDB Connected
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* ML Model Controls */}
@@ -96,6 +109,10 @@ const FraudAnalytics = () => {
 
         {/* Real-time Analytics Summary */}
         <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-6 border border-purple-200">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">Real-time Analytics Summary</h3>
+            <span className="text-xs text-gray-500">Data from MongoDB</span>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">{stats.accuracy}</div>
@@ -111,6 +128,24 @@ const FraudAnalytics = () => {
               <div className="text-2xl font-bold text-blue-600">{stats.fraudPrevented}</div>
               <div className="text-sm text-gray-600">Fraud Prevented</div>
               <div className="text-xs text-green-600 mt-1">{stats.fraudCount} transactions blocked</div>
+            </div>
+          </div>
+          
+          {/* Data Source Info */}
+          <div className="mt-6 pt-4 border-t border-purple-200">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center space-x-4">
+                <span className="text-gray-600">
+                  <strong>Data Source:</strong> MongoDB Transactions Collection
+                </span>
+                <span className="text-gray-600">
+                  <strong>Total Records:</strong> {stats.totalTransactions?.toLocaleString() || '0'}
+                </span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></span>
+                <span className="text-green-700 font-medium">Live Connection Active</span>
+              </div>
             </div>
           </div>
         </div>

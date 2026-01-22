@@ -96,13 +96,24 @@ const FraudVsNormalChart = () => {
   };
 
   return (
-    <ChartWrapper
-      type="doughnut"
-      data={data}
-      options={options}
-      title="Fraudulent vs Normal Transactions"
-      height={300}
-    />
+    <div className="bg-white rounded-lg border border-gray-200 p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-900">Fraudulent vs Normal Transactions</h3>
+        <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-50 text-green-700 border border-green-200">
+          <span className="w-1.5 h-1.5 bg-green-600 rounded-full mr-1.5"></span>
+          MongoDB
+        </span>
+      </div>
+      <ChartWrapper
+        type="doughnut"
+        data={data}
+        options={options}
+        height={300}
+      />
+      <div className="mt-2 text-center text-xs text-gray-500">
+        Total: {chartData.data.reduce((a, b) => a + b, 0).toLocaleString()} transactions
+      </div>
+    </div>
   );
 };
 

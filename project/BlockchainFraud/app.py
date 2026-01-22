@@ -543,6 +543,11 @@ def get_transactions():
         date_range = request.args.get('dateRange', 'all')
         amount_range = request.args.get('amountRange', 'all')
         
+        print(f"\n{'='*80}")
+        print(f"📋 TRANSACTIONS REQUEST")
+        print(f"   Page: {page}, Limit: {limit}")
+        print(f"   Filters - Status: {status}, Type: {tx_type}, Search: '{search}'")
+        
         # Build MongoDB query
         query = {}
         
@@ -552,15 +557,16 @@ def get_transactions():
         elif status == 'normal':
             query['isFraud'] = 0
         
-        # Filter by transaction type
+        # Filter by transaction type - USE CORRECT FIELD NAME
         if tx_type != 'all':
-            query['type'] = tx_type
+            query['transactionType'] = tx_type
         
-        # Filter by search (search in nameOrig or nameDest)
+        # Filter by search - USE CORRECT FIELD NAMES
         if search:
             query['$or'] = [
-                {'nameOrig': {'$regex': search, '$options': 'i'}},
-                {'nameDest': {'$regex': search, '$options': 'i'}}
+                {'sender': {'$regex': search, '$options': 'i'}},
+                {'receiver': {'$regex': search, '$options': 'i'}},
+                {'transactionId': {'$regex': search, '$options': 'i'}}
             ]
         
         # Filter by amount range
@@ -574,6 +580,7 @@ def get_transactions():
         
         # Get total count
         total_count = mongodb_service.transactions_collection.count_documents(query)
+        print(f"   Found {total_count} matching transactions")
         
         # Get paginated results
         skip = (page - 1) * limit
@@ -582,45 +589,47 @@ def get_transactions():
         # Format transactions for frontend
         transactions = []
         for tx in transactions_cursor:
-            # Generate transaction ID based on step or use MongoDB ID
-            tx_id = f"TXN-{tx.get('step', 0):06d}" if tx.get('step') else str(tx.get('_id', ''))[:12]
+            # Use existing transactionId or generate from MongoDB ID
+            tx_id = tx.get('transactionId', str(tx.get('_id', ''))[:12])
             
-            # Format timestamp
-            timestamp = tx.get('processed_at', '')
+            # Format timestamp - USE CORRECT FIELD NAME
+            timestamp = tx.get('timestamp', '')
+            formatted_timestamp = ''
             if timestamp:
                 try:
                     from datetime import datetime
                     if isinstance(timestamp, str):
+                        # Try parsing ISO format
                         dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    else:
+                    elif hasattr(timestamp, 'strftime'):
+                        # Already a datetime object
                         dt = timestamp
-                    timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
-                except:
-                    timestamp = str(timestamp)
+                    else:
+                        dt = datetime.now()
+                    formatted_timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                except Exception as e:
+                    print(f"   Warning: Could not parse timestamp {timestamp}: {e}")
+                    formatted_timestamp = str(timestamp) if timestamp else 'N/A'
             
             transaction = {
                 'id': tx_id,
                 'transactionId': tx_id,
-                'step': tx.get('step', 0),
-                'type': tx.get('type', 'TRANSFER'),
+                'type': tx.get('transactionType', 'TRANSFER'),  # USE CORRECT FIELD
                 'amount': float(tx.get('amount', 0)),
-                'sender': tx.get('nameOrig', 'Unknown'),  # Frontend expects 'sender'
-                'receiver': tx.get('nameDest', 'Unknown'),  # Frontend expects 'receiver'
-                'nameOrig': tx.get('nameOrig', 'Unknown'),
-                'oldbalanceOrg': float(tx.get('oldbalanceOrg', 0)),
-                'newbalanceOrig': float(tx.get('newbalanceOrig', 0)),
-                'nameDest': tx.get('nameDest', 'Unknown'),
-                'oldbalanceDest': float(tx.get('oldbalanceDest', 0)),
-                'newbalanceDest': float(tx.get('newbalanceDest', 0)),
+                'sender': tx.get('sender', 'Unknown'),  # USE CORRECT FIELD
+                'receiver': tx.get('receiver', 'Unknown'),  # USE CORRECT FIELD
                 'prediction': tx.get('prediction', 'NORMAL'),
                 'isFraud': tx.get('isFraud', 0),
-                'confidence': tx.get('confidence', 0.85),
-                'timestamp': timestamp,
-                'date': timestamp,
+                'confidence': float(tx.get('confidence', 0.85)),
+                'timestamp': formatted_timestamp,
+                'date': formatted_timestamp,
                 'status': 'fraud' if tx.get('isFraud', 0) == 1 else 'normal',
-                'riskScore': round(tx.get('confidence', 0.85) * 100, 1)
+                'riskScore': round(float(tx.get('confidence', 0.85)) * 100, 1)
             }
             transactions.append(transaction)
+        
+        print(f"   Returning {len(transactions)} transactions for display")
+        print(f"{'='*80}\n")
         
         # Calculate total pages
         total_pages = (total_count + limit - 1) // limit
@@ -638,7 +647,9 @@ def get_transactions():
         })
         
     except Exception as e:
-        print(f"Error getting transactions: {e}")
+        print(f"❌ Error getting transactions: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/analytics/charts', methods=['GET'])

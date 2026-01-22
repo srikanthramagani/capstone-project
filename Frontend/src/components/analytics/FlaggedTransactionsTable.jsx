@@ -1,81 +1,85 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   AlertTriangle, 
   CheckCircle, 
   XCircle, 
   ExternalLink,
   Clock,
-  Eye
+  Eye,
+  RefreshCw
 } from 'lucide-react';
-import { Table, Badge, Button, Modal } from '../ui';
+import { Table, Badge, Button, Modal, Spinner } from '../ui';
+import apiService from '../../services/api';
 
 const FlaggedTransactionsTable = () => {
   const [selectedTransaction, setSelectedTransaction] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [flaggedTransactions, setFlaggedTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Mock flagged transactions data
-  const flaggedTransactions = [
-    {
-      id: 'TXN-2023-4567',
-      sender: '0x742d35Cc6634C0532925a3b8D',
-      receiver: '0x8ba1f109551bD432803012645Hac136c',
-      amount: 50000.00,
-      riskScore: 0.89,
-      reason: 'Unusual spending pattern',
-      timestamp: '2024-01-15T10:30:00Z',
-      status: 'pending_review',
-      mlModel: 'Random Forest v2.1',
-      confidence: 0.94
-    },
-    {
-      id: 'TXN-2023-4568',
-      sender: '0x123456789abcdef123456789abcdef123456789a',
-      receiver: '0x987654321fedcba987654321fedcba987654321f',
-      amount: 25000.00,
-      riskScore: 0.76,
-      reason: 'Multiple transactions in short time',
-      timestamp: '2024-01-15T10:25:00Z',
-      status: 'approved',
-      mlModel: 'Neural Network v1.5',
-      confidence: 0.87
-    },
-    {
-      id: 'TXN-2023-4569',
-      sender: '0x456789abcdef123456789abcdef123456789abcde',
-      receiver: '0x654321fedcba987654321fedcba987654321fedc',
-      amount: 75000.00,
-      riskScore: 0.92,
-      reason: 'Transaction from high-risk wallet',
-      timestamp: '2024-01-15T10:20:00Z',
-      status: 'rejected',
-      mlModel: 'Gradient Boosting v3.0',
-      confidence: 0.96
-    },
-    {
-      id: 'TXN-2023-4570',
-      sender: '0x789abcdef123456789abcdef123456789abcdef12',
-      receiver: '0x321fedcba987654321fedcba987654321fedcba98',
-      amount: 15000.00,
-      riskScore: 0.68,
-      reason: 'Velocity check failed',
-      timestamp: '2024-01-15T10:15:00Z',
-      status: 'pending_review',
-      mlModel: 'Random Forest v2.1',
-      confidence: 0.82
-    },
-    {
-      id: 'TXN-2023-4571',
-      sender: '0xabcdef123456789abcdef123456789abcdef123456',
-      receiver: '0xfedcba987654321fedcba987654321fedcba987654',
-      amount: 35000.00,
-      riskScore: 0.84,
-      reason: 'Geographic anomaly detected',
-      timestamp: '2024-01-15T10:10:00Z',
-      status: 'pending_review',
-      mlModel: 'Neural Network v1.5',
-      confidence: 0.91
+  useEffect(() => {
+    loadFlaggedTransactions();
+  }, []);
+
+  const loadFlaggedTransactions = async () => {
+    try {
+      setLoading(true);
+      const data = await apiService.getFlaggedTransactions();
+      // Handle both 'flagged' and 'flaggedTransactions' field names
+      const transactions = data.flagged || data.flaggedTransactions || [];
+      setFlaggedTransactions(transactions);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading flagged transactions:', err);
+      setError('Failed to load flagged transactions');
+      // Fallback to mock data
+      setMockFlaggedTransactions();
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const setMockFlaggedTransactions = () => {
+    setFlaggedTransactions([
+      {
+        id: 'TXN-2023-4567',
+        sender: '0x742d35Cc6634C0532925a3b8D',
+        receiver: '0x8ba1f109551bD432803012645Hac136c',
+        amount: 50000.00,
+        riskScore: 0.89,
+        reason: 'Unusual spending pattern',
+        timestamp: '2024-01-15T10:30:00Z',
+        status: 'pending_review',
+        mlModel: 'Random Forest v2.1',
+        confidence: 0.94
+      },
+      {
+        id: 'TXN-2023-4568',
+        sender: '0x123456789abcdef123456789abcdef123456789a',
+        receiver: '0x987654321fedcba987654321fedcba987654321f',
+        amount: 25000.00,
+        riskScore: 0.76,
+        reason: 'Multiple transactions in short time',
+        timestamp: '2024-01-15T10:25:00Z',
+        status: 'approved',
+        mlModel: 'Neural Network v1.5',
+        confidence: 0.87
+      }
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Flagged Transactions</h3>
+        <div className="flex items-center justify-center py-8">
+          <Spinner size="lg" />
+          <span className="ml-2 text-gray-600">Loading flagged transactions...</span>
+        </div>
+      </div>
+    );
+  }
 
   const getStatusIcon = (status) => {
     switch (status) {

@@ -12,209 +12,87 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell
 } from "recharts";
-
-const API_KEY = "3PPN9N20KDJCV68P";
 
 export default function AdminScreen() {
   const location = useLocation();
   const backendHtml = location.state?.backendHtml || "";
 
-  const [stockData, setStockData] = useState([]);
-  const [btcData, setBtcData] = useState([]);
+  const [dashboardData, setDashboardData] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-
-  // Custom Candlestick Component
-  const Candlestick = ({ payload, x, y, width, height }) => {
-    if (!payload) return null;
-    
-    const { open, high, low, close } = payload;
-    const isRising = close >= open;
-    const color = isRising ? "#00C851" : "#ff4444";
-    const fillColor = isRising ? "#00C851" : "#ff4444";
-    
-    const bodyHeight = Math.abs(close - open);
-    const bodyY = Math.min(open, close);
-    const wickTop = high;
-    const wickBottom = low;
-    
-    // Scale values to chart coordinates
-    const priceRange = Math.max(...Object.values(payload)) - Math.min(...Object.values(payload));
-    const scale = height / (priceRange * 1.1); // Add 10% padding
-    
-    const candleHeight = bodyHeight * scale;
-    const candleY = y + height - ((bodyY - Math.min(...Object.values(payload))) * scale) - candleHeight;
-    
-    return (
-      <g>
-        {/* Wick line */}
-        <line
-          x1={x + width / 2}
-          y1={y + height - ((wickTop - Math.min(...Object.values(payload))) * scale)}
-          x2={x + width / 2}
-          y2={y + height - ((wickBottom - Math.min(...Object.values(payload))) * scale)}
-          stroke={color}
-          strokeWidth={1}
-        />
-        {/* Body rectangle */}
-        <rect
-          x={x + width * 0.25}
-          y={candleY}
-          width={width * 0.5}
-          height={Math.max(candleHeight, 2)}
-          fill={fillColor}
-          stroke={color}
-          strokeWidth={1}
-        />
-      </g>
-    );
-  };
-
-  const fetchStockData = async () => {
+  // Fetch real data from backend
+  const fetchRealData = async () => {
     try {
-      console.log("Fetching AAPL stock data...");
+      setLoading(true);
       
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      const response = await fetch(
-        `https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=AAPL&interval=1min&apikey=${API_KEY}`,
-        { signal: controller.signal }
-      );
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      // Fetch dashboard metrics (real processed data)
+      const metricsResponse = await fetch('http://localhost:5000/dashboard/metrics');
+      if (metricsResponse.ok) {
+        const metricsData = await metricsResponse.json();
+        setDashboardData(metricsData);
       }
       
-      const data = await response.json();
-      console.log("Stock API response:", data);
-      
-      const timeSeries = data["Time Series (1min)"];
-      if (timeSeries) {
-        const formatted = Object.entries(timeSeries)
-          .map(([time, values]) => ({
-            time: time.substring(11), // Extract time part (HH:MM:SS)
-            open: parseFloat(values["1. open"]),
-            high: parseFloat(values["2. high"]),
-            low: parseFloat(values["3. low"]),
-            close: parseFloat(values["4. close"]),
-            volume: parseInt(values["5. volume"])
-          }))
-          .reverse()
-          .slice(-30); // Reduced from 50 to 30 for faster rendering
-        
-        console.log("Formatted stock data:", formatted.slice(0, 3));
-        setStockData(formatted);
-      } else {
-        console.warn("No time series data found, keeping existing data");
+      // Fetch analytics charts (real fraud analytics)
+      const analyticsResponse = await fetch('http://localhost:5000/analytics/charts');
+      if (analyticsResponse.ok) {
+        const analytics = await analyticsResponse.json();
+        setAnalyticsData(analytics);
       }
+      
+      setError(null);
     } catch (err) {
-      if (err.name === 'AbortError') {
-        console.warn("Stock data fetch timed out");
-      } else {
-        console.error("Error fetching stock data:", err);
-      }
-    }
-  };
-
-  // Fetch Bitcoin - Modified to get more frequent data
-  const fetchBtcData = async () => {
-    try {
-      console.log("Fetching Bitcoin data...");
-      
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
-      const response = await fetch(
-        `https://www.alphavantage.co/query?function=CURRENCY_EXCHANGE_RATE&from_currency=BTC&to_currency=USD&apikey=${API_KEY}`,
-        { signal: controller.signal }
-      );
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log("Bitcoin API response:", data);
-      
-      const price = parseFloat(data["Realtime Currency Exchange Rate"]?.["5. Exchange Rate"]);
-      if (price && !isNaN(price)) {
-        const currentTime = new Date().toLocaleTimeString();
-        // Create OHLC format for Bitcoin (simulating micro-movements)
-        const priceVariation = price * 0.0001; // 0.01% variation
-        const newDataPoint = {
-          time: currentTime,
-          open: price - (Math.random() * priceVariation),
-          high: price + (Math.random() * priceVariation * 2),
-          low: price - (Math.random() * priceVariation * 2),
-          close: price,
-          volume: Math.floor(Math.random() * 20) + 5
-        };
-        
-        console.log("New BTC data point:", newDataPoint);
-        setBtcData((prev) => [
-          ...prev.slice(-29), // Reduced from 49 to 29 for faster rendering
-          newDataPoint
-        ]);
-      } else {
-        console.warn("Invalid Bitcoin price data, keeping existing data");
-      }
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        console.warn("Bitcoin data fetch timed out");
-      } else {
-        console.error("Error fetching BTC data:", err);
-      }
+      console.error("Error fetching real data:", err);
+      setError("Unable to connect to backend. Please ensure the Flask server is running and data has been processed.");
+      // Don't set any fallback data - show only real data
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        // Start with sample data immediately for instant visibility
-        setStockData(sampleStockData);
-        setBtcData(sampleBtcData);
-        setLoading(false); // Set loading to false immediately
-        
-        // Load real API data in background without blocking UI
-        setTimeout(async () => {
-          console.log("Fetching real API data...");
-          await Promise.all([fetchStockData(), fetchBtcData()]);
-          console.log("API data loaded successfully");
-        }, 100); // Small delay to allow UI to render first
-        
-      } catch (error) {
-        console.error("Error loading API data, using sample data:", error);
-        setStockData(sampleStockData);
-        setBtcData(sampleBtcData);
-        setLoading(false);
-      }
-    };
-    loadData();
-
-    // Optimize update intervals - less frequent updates
-    const btcInterval = setInterval(() => {
-      console.log("Updating BTC data...");
-      fetchBtcData();
-    }, 60000); // Reduced from 30s to 60s
+    fetchRealData();
     
-    const stockInterval = setInterval(() => {
-      console.log("Updating stock data...");
-      fetchStockData();
-    }, 300000); // Reduced from 2min to 5min
-    
-    return () => {
-      clearInterval(btcInterval);
-      clearInterval(stockInterval);
-    };
+    // Refresh data every 30 seconds
+    const interval = setInterval(fetchRealData, 30000);
+    return () => clearInterval(interval);
   }, []);
+
+  // Chart colors for fraud analytics
+  const COLORS = ['#00C851', '#ff4444', '#ffbb33', '#33b5e5'];
+
+  const renderMetricsCard = (title, value, subtitle, trend) => (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      <Card sx={{ p: 3, height: '100%', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+        <Typography variant="h4" sx={{ fontWeight: 'bold', mb: 1 }}>
+          {value}
+        </Typography>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          {title}
+        </Typography>
+        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+          {subtitle}
+        </Typography>
+        {trend && (
+          <Typography variant="caption" sx={{ 
+            color: trend.includes('+') ? '#4caf50' : trend.includes('-') ? '#f44336' : '#ffeb3b',
+            fontWeight: 'bold'
+          }}>
+            {trend}
+          </Typography>
+        )}
+      </Card>
+    </motion.div>
+  );
 
   return (
     <Box
@@ -232,7 +110,7 @@ export default function AdminScreen() {
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7 }}
-        style={{ width: "100%", maxWidth: "1000px" }}
+        style={{ width: "100%", maxWidth: "1200px" }}
       >
         <Card
           sx={{
@@ -250,150 +128,320 @@ export default function AdminScreen() {
               }}
             />
           ) : (
-            <>
-              <Typography
-                variant="h4"
-                color="primary"
-                fontWeight={700}
-                sx={{ mb: 2 }}
-              >
-                Real-Time Business Dashboard
+            <Box textAlign="center">
+              <Typography variant="h3" sx={{ mb: 2, color: "#1e3c72", fontWeight: "bold" }}>
+                🔗 Blockchain Fraud Detection Dashboard
               </Typography>
-              <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                Monitor live stock and cryptocurrency prices with real-time
-                analytics.
+              <Typography variant="h6" sx={{ color: "#555", mb: 1 }}>
+                Real-time Analytics from ML Models & Blockchain Data
               </Typography>
-            </>
-          )}
-
-          {loading ? (
-            <Box display="flex" flexDirection="column" alignItems="center" my={4}>
-              <CircularProgress />
-              <Typography variant="body2" sx={{ mt: 2 }}>
-                Loading market data...
+              <Typography variant="body2" sx={{ color: "#666", bgcolor: '#e3f2fd', p: 2, borderRadius: 2, mt: 2 }}>
+                ⚡ This dashboard shows ONLY real transaction data processed by ML models and stored on blockchain.
+                <br />
+                ✅ No duplicate data • ✅ No sample data • ✅ All transactions are unique and verified
               </Typography>
             </Box>
-          ) : (
-            <>
-              {/* Debug Info */}
-              <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-                Stock Data Points: {stockData.length} | Bitcoin Data Points: {btcData.length}
-              </Typography>
-
-              {/* Stock Chart */}
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                📈 AAPL Stock Candlestick (High Precision)
-              </Typography>
-              <ResponsiveContainer width="100%" height={350}>
-                <ComposedChart data={stockData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="2 2" stroke="#e0e0e0" />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fontSize: 10 }}
-                    interval="preserveStartEnd"
-                    angle={-90}
-                    textAnchor="end"
-                    height={80}
-                    tickFormatter={(value) => value.substring(3)}
-                  />
-                  <YAxis 
-                    domain={['dataMin - 0.1', 'dataMax + 0.1']}
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(value) => `$${value.toFixed(3)}`}
-                    tickCount={10}
-                  />
-                  <Tooltip 
-                    formatter={(value, name) => [`$${value.toFixed(3)}`, name.toUpperCase()]}
-                    labelFormatter={(label) => `Time: ${label}`}
-                    contentStyle={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  />
-                  <Bar dataKey="high" fill="transparent" />
-                  <Bar dataKey="low" fill="transparent" />
-                  <Line type="monotone" dataKey="close" stroke="#1e88e5" strokeWidth={3} dot={{ r: 2 }} connectNulls={false} />
-                  <Line type="monotone" dataKey="open" stroke="#ff9800" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 1 }} />
-                  <Line type="monotone" dataKey="high" stroke="#4caf50" strokeWidth={1} strokeDasharray="1 1" dot={false} />
-                  <Line type="monotone" dataKey="low" stroke="#f44336" strokeWidth={1} strokeDasharray="1 1" dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-
-              {/* Bitcoin Chart */}
-              <Typography variant="h6" sx={{ mt: 4, mb: 2 }}>
-                ₿ Bitcoin Candlestick (Ultra Precision)
-              </Typography>
-              <ResponsiveContainer width="100%" height={350}>
-                <ComposedChart data={btcData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="2 2" stroke="#e0e0e0" />
-                  <XAxis 
-                    dataKey="time" 
-                    tick={{ fontSize: 10 }}
-                    interval="preserveStartEnd"
-                    angle={-90}
-                    textAnchor="end"
-                    height={80}
-                    tickFormatter={(value) => value.substring(3)}
-                  />
-                  <YAxis 
-                    domain={['dataMin - 10', 'dataMax + 10']}
-                    tick={{ fontSize: 10 }}
-                    tickFormatter={(value) => `$${value.toFixed(2)}`}
-                    tickCount={15}
-                  />
-                  <Tooltip 
-                    formatter={(value, name) => [`$${value.toFixed(2)}`, name.toUpperCase()]}
-                    labelFormatter={(label) => `Time: ${label}`}
-                    contentStyle={{
-                      backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                      border: '1px solid #ccc',
-                      borderRadius: '4px',
-                      fontSize: '12px'
-                    }}
-                  />
-                  <Bar dataKey="high" fill="transparent" />
-                  <Bar dataKey="low" fill="transparent" />
-                  <Line type="monotone" dataKey="close" stroke="#f39c12" strokeWidth={3} dot={{ r: 2 }} connectNulls={false} />
-                  <Line type="monotone" dataKey="open" stroke="#8e44ad" strokeWidth={2} strokeDasharray="2 2" dot={{ r: 1 }} />
-                  <Line type="monotone" dataKey="high" stroke="#27ae60" strokeWidth={1} strokeDasharray="1 1" dot={false} />
-                  <Line type="monotone" dataKey="low" stroke="#e74c3c" strokeWidth={1} strokeDasharray="1 1" dot={false} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </>
           )}
         </Card>
 
-        {/* Buttons */}
-        <Box textAlign="center" mt={2}>
-          <Button
-            component={Link}
-            to="/predict"
-            variant="contained"
-            color="primary"
-            sx={{ mr: 2 }}
-          >
-            Predict Fraud
-          </Button>
-          <Button
-            component={Link}
-            to="/testdata"
-            variant="contained"
-            color="secondary"
-            sx={{ mr: 2 }}
-          >
-            Upload Test Data
-          </Button>
-          <Button
-            component={Link}
-            to="/logout"
-            variant="outlined"
-            color="secondary"
-          >
-            Logout
-          </Button>
-        </Box>
+        {/* Loading State */}
+        {loading && (
+          <Card sx={{ p: 4, textAlign: 'center', mb: 3 }}>
+            <CircularProgress sx={{ mb: 2 }} />
+            <Typography>Loading real-time data from blockchain and ML models...</Typography>
+          </Card>
+        )}
+
+        {/* Error State */}
+        {error && (
+          <Card sx={{ p: 4, mb: 3, bgcolor: '#fff3cd', border: '1px solid #ffeaa7' }}>
+            <Typography variant="h6" sx={{ color: '#856404', mb: 2 }}>
+              ⚠️ No Real Data Available
+            </Typography>
+            <Typography sx={{ color: '#856404', mb: 2 }}>
+              {error}
+            </Typography>
+            <Button 
+              variant="contained" 
+              onClick={fetchRealData}
+              sx={{ mr: 2 }}
+            >
+              Retry Connection
+            </Button>
+            <Button 
+              variant="outlined" 
+              component={Link} 
+              to="/test-data-upload"
+            >
+              Upload Test Data
+            </Button>
+          </Card>
+        )}
+
+        {/* Real Dashboard Data */}
+        {dashboardData && dashboardData.metrics && (
+          <>
+            {/* Metrics Cards */}
+            <Card sx={{ p: 4, mb: 3 }}>
+              <Typography variant="h5" sx={{ mb: 3, color: "#1e3c72", fontWeight: "bold" }}>
+                📊 Real-time Processing Metrics
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', lg: '1fr 1fr 1fr 1fr' }, gap: 3 }}>
+                {renderMetricsCard(
+                  "Total Transactions",
+                  dashboardData.metrics.totalTransactions?.value || "0",
+                  dashboardData.metrics.totalTransactions?.subtitle || "Processed by ML",
+                  dashboardData.metrics.totalTransactions?.trendValue
+                )}
+                {renderMetricsCard(
+                  "Active Users",
+                  dashboardData.metrics.totalUsers?.value || "0",
+                  dashboardData.metrics.totalUsers?.subtitle || "Unique entities",
+                  dashboardData.metrics.totalUsers?.trendValue
+                )}
+                {renderMetricsCard(
+                  "Fraud Detected",
+                  dashboardData.metrics.fraudulentTransactions?.value || "0",
+                  dashboardData.metrics.fraudulentTransactions?.subtitle || "By ML models",
+                  dashboardData.metrics.fraudulentTransactions?.trendValue
+                )}
+                {renderMetricsCard(
+                  "Model Accuracy",
+                  dashboardData.metrics.modelAccuracy?.value || "0%",
+                  dashboardData.metrics.modelAccuracy?.subtitle || "Current performance",
+                  dashboardData.metrics.modelAccuracy?.trendValue
+                )}
+              </Box>
+            </Card>
+
+            {/* Blockchain Status */}
+            <Card sx={{ p: 4, mb: 3 }}>
+              <Typography variant="h5" sx={{ mb: 3, color: "#1e3c72", fontWeight: "bold" }}>
+                ⛓️ Blockchain Status & Recent Blocks
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                <Box
+                  sx={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    bgcolor: dashboardData.blockchainStatus?.status === 'online' ? '#4caf50' : '#f44336'
+                  }}
+                />
+                <Typography variant="h6">
+                  {dashboardData.blockchainStatus?.label || 'Status Unknown'}
+                </Typography>
+                <Typography variant="body2" sx={{ ml: 'auto', color: '#666' }}>
+                  Total Blocks: {dashboardData.blockchainStatus?.totalBlocks || 0} | Last sync: {dashboardData.blockchainStatus?.lastSync || 'Never'}
+                </Typography>
+              </Box>
+
+              {/* Recent Blocks with Transaction Hashmaps */}
+              {dashboardData.recentBlocks && dashboardData.recentBlocks.length > 0 && (
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 2, color: "#1e3c72" }}>
+                    📦 Recent Blocks with Transaction Hashmaps
+                  </Typography>
+                  {dashboardData.recentBlocks.slice(0, 5).map((block, index) => (
+                    <Card key={index} sx={{ p: 3, mb: 2, bgcolor: '#f8f9fa', border: '1px solid #dee2e6' }}>
+                      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ color: '#666', fontWeight: 'bold' }}>
+                            Block #{block.blockNumber}
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', wordBreak: 'break-all' }}>
+                            {block.blockHash}
+                          </Typography>
+                        </Box>
+                        <Box>
+                          <Typography variant="body2" sx={{ color: '#666' }}>
+                            <strong>Timestamp:</strong> {block.timestamp}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#666' }}>
+                            <strong>Transactions:</strong> {block.transactionCount} | <strong>Fraud:</strong> {block.fraudCount}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: '#666', fontFamily: 'monospace', fontSize: '0.7rem' }}>
+                            <strong>Miner:</strong> {block.miner}
+                          </Typography>
+                        </Box>
+                      </Box>
+
+                      {/* Transaction Hashmaps */}
+                      <Box>
+                        <Typography variant="subtitle2" sx={{ mt: 2, mb: 1, color: '#1e3c72', fontWeight: 'bold' }}>
+                          Transaction Hashmaps ({block.transactions.length} transactions)
+                        </Typography>
+                        <Box sx={{ maxHeight: '200px', overflowY: 'auto', bgcolor: 'white', p: 2, borderRadius: 1 }}>
+                          {block.transactions.slice(0, 10).map((tx, txIndex) => (
+                            <Box 
+                              key={txIndex} 
+                              sx={{ 
+                                mb: 1, 
+                                pb: 1, 
+                                borderBottom: txIndex < block.transactions.slice(0, 10).length - 1 ? '1px solid #eee' : 'none'
+                              }}
+                            >
+                              <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', color: tx.fraud ? '#d32f2f' : '#388e3c' }}>
+                                <strong>{tx.fraud ? '🚨 FRAUD' : '✅ NORMAL'}:</strong> {tx.hash}
+                              </Typography>
+                              <Typography variant="caption" sx={{ color: '#666', fontSize: '0.65rem' }}>
+                                {tx.from} → {tx.to} | ${tx.amount.toFixed(2)} | {tx.type}
+                              </Typography>
+                            </Box>
+                          ))}
+                          {block.transactions.length > 10 && (
+                            <Typography variant="caption" sx={{ color: '#666', fontStyle: 'italic' }}>
+                              ... and {block.transactions.length - 10} more transactions
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    </Card>
+                  ))}
+                  {dashboardData.analysisTimestamp && (
+                    <Typography variant="caption" sx={{ color: '#666', mt: 2, display: 'block' }}>
+                      Last Analysis: {new Date(dashboardData.analysisTimestamp).toLocaleString()}
+                    </Typography>
+                  )}
+                </Box>
+              )}
+            </Card>
+          </>
+        )}
+
+        {/* Real Analytics Charts */}
+        {analyticsData && (
+          <Card sx={{ p: 4, mb: 3 }}>
+            <Typography variant="h5" sx={{ mb: 3, color: "#1e3c72", fontWeight: "bold" }}>
+              📈 Fraud Detection Analytics
+            </Typography>
+            
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' }, gap: 4, mb: 4 }}>
+              {/* Fraud vs Normal Pie Chart */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                  Fraud vs Normal Transactions
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={analyticsData.fraudVsNormal.labels.map((label, index) => ({
+                        name: label,
+                        value: analyticsData.fraudVsNormal.data[index],
+                        fill: COLORS[index % COLORS.length]
+                      }))}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={80}
+                      dataKey="value"
+                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(1)}%`}
+                    >
+                      {analyticsData.fraudVsNormal.data.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </Box>
+
+              {/* Transaction Types */}
+              {analyticsData.transactionTypes && analyticsData.transactionTypes.labels.length > 0 && (
+                <Box>
+                  <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                    Transaction Types Analysis
+                  </Typography>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ComposedChart
+                      data={analyticsData.transactionTypes.labels.map((label, index) => ({
+                        type: label,
+                        normal: analyticsData.transactionTypes.normal[index] || 0,
+                        fraud: analyticsData.transactionTypes.fraud[index] || 0
+                      }))}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="type" />
+                      <YAxis />
+                      <Tooltip />
+                      <Bar dataKey="normal" fill="#00C851" name="Normal" />
+                      <Bar dataKey="fraud" fill="#ff4444" name="Fraud" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </Box>
+              )}
+            </Box>
+
+            {/* Fraud Trend (if available) */}
+            {analyticsData.fraudTrend && analyticsData.fraudTrend.labels.length > 0 && (
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2, textAlign: 'center' }}>
+                  Fraud Detection Trend
+                </Typography>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart
+                    data={analyticsData.fraudTrend.labels.map((label, index) => ({
+                      period: label,
+                      fraudRate: analyticsData.fraudTrend.fraudRate[index] || 0,
+                      totalTransactions: analyticsData.fraudTrend.totalTransactions[index] || 0
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis />
+                    <Tooltip />
+                    <Bar dataKey="totalTransactions" fill="#33b5e5" name="Total Transactions" />
+                    <Line type="monotone" dataKey="fraudRate" stroke="#ff4444" name="Fraud Rate %" />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </Box>
+            )}
+          </Card>
+        )}
+
+        {/* No Data Message */}
+        {!loading && !dashboardData && !analyticsData && (
+          <Card sx={{ p: 4, textAlign: 'center', mb: 3 }}>
+            <Typography variant="h5" sx={{ mb: 2, color: "#1e3c72" }}>
+              📊 No Processed Data Available
+            </Typography>
+            <Typography sx={{ mb: 3, color: '#666' }}>
+              This dashboard shows only real data processed through ML models and stored on blockchain.
+              Upload transaction data to see live fraud detection results.
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Button variant="contained" component={Link} to="/test-data-upload">
+                Upload Transaction Data
+              </Button>
+              <Button variant="outlined" component={Link} to="/predict">
+                Run Fraud Detection
+              </Button>
+              <Button variant="outlined" component={Link} to="/live-analysis">
+                View Live Analysis
+              </Button>
+            </Box>
+          </Card>
+        )}
+
+        {/* Navigation */}
+        <Card sx={{ p: 3, textAlign: "center" }}>
+          <Typography variant="h6" sx={{ mb: 2, color: "#1e3c72" }}>
+            🎛️ Admin Controls
+          </Typography>
+          <Box sx={{ display: "flex", gap: 2, justifyContent: "center", flexWrap: "wrap" }}>
+            <Button variant="contained" component={Link} to="/dashboard-overview">
+              Dashboard Overview
+            </Button>
+            <Button variant="contained" component={Link} to="/transaction-monitoring">
+              Transaction Monitoring
+            </Button>
+            <Button variant="contained" component={Link} to="/fraud-analytics">
+              Fraud Analytics
+            </Button>
+            <Button variant="outlined" component={Link} to="/logout">
+              Logout
+            </Button>
+          </Box>
+        </Card>
       </motion.div>
     </Box>
   );

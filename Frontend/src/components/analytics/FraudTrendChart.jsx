@@ -1,21 +1,79 @@
-import React from 'react';
-import { ChartWrapper } from '../ui';
+import React, { useState, useEffect } from 'react';
+import { ChartWrapper, Spinner } from '../ui';
+import apiService from '../../services/api';
 
 const FraudTrendChart = () => {
+  const [chartData, setChartData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadChartData();
+  }, []);
+
+  const loadChartData = async () => {
+    try {
+      const data = await apiService.getAnalyticsCharts();
+      setChartData(data.fraudTrend);
+      setError(null);
+    } catch (err) {
+      console.error('Error loading fraud trend data:', err);
+      setError('Failed to load chart data');
+      // Fallback to mock data
+      setChartData({
+        labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+        fraudRate: [3.2, 2.8, 4.1, 3.7, 2.9, 3.5],
+        totalTransactions: [12500, 13200, 11800, 14100, 13700, 12900]
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fraud Trend Over Time</h3>
+        <div className="h-64 flex items-center justify-center">
+          <Spinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !chartData) {
+    return (
+      <div className="bg-white rounded-lg border border-gray-200 p-6">
+        <h3 className="text-lg font-semibold text-gray-900 mb-4">Fraud Trend Over Time</h3>
+        <div className="h-64 flex items-center justify-center">
+          <div className="text-center">
+            <p className="text-red-600 mb-2">{error}</p>
+            <button 
+              onClick={loadChartData}
+              className="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const data = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+    labels: chartData.labels || [],
     datasets: [
       {
         label: 'Fraud Detection Rate (%)',
-        data: [3.2, 2.8, 4.1, 3.7, 2.9, 3.5, 4.2, 3.8, 3.1, 2.7, 3.4, 3.0],
+        data: chartData.fraudRate || [],
         borderColor: 'rgba(239, 68, 68, 1)',
         backgroundColor: 'rgba(239, 68, 68, 0.1)',
         tension: 0.4,
         fill: true,
       },
       {
-        label: 'Total Transactions (thousands)',
-        data: [12.5, 13.2, 11.8, 14.1, 13.7, 12.9, 15.2, 14.8, 13.5, 16.2, 15.8, 14.3],
+        label: 'Total Transactions',
+        data: chartData.totalTransactions || [],
         borderColor: 'rgba(59, 130, 246, 1)',
         backgroundColor: 'rgba(59, 130, 246, 0.1)',
         tension: 0.4,
@@ -36,7 +94,7 @@ const FraudTrendChart = () => {
         display: true,
         title: {
           display: true,
-          text: 'Month'
+          text: 'Period'
         }
       },
       y: {
@@ -54,7 +112,7 @@ const FraudTrendChart = () => {
         position: 'right',
         title: {
           display: true,
-          text: 'Total Transactions (thousands)'
+          text: 'Total Transactions'
         },
         grid: {
           drawOnChartArea: false,

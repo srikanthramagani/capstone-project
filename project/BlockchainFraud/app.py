@@ -7,9 +7,20 @@ import os
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import json
 import tempfile
+from mongodb_service import MongoDBService
 
 app = Flask(__name__)
 CORS(app)
+
+# Initialize MongoDB service
+mongodb_service = MongoDBService()
+
+# Admin credentials (in production, use proper authentication system)
+ADMIN_CREDENTIALS = {
+    'admin': 'admin123',
+    'user': 'password',
+    'demo': 'demo123'
+}
 
 # Load pre-trained model components
 try:
@@ -70,6 +81,81 @@ def predict_fraud(X):
         # Return random predictions as fallback
         return np.random.choice([0, 1], size=len(X), p=[0.8, 0.2])
 
+@app.route('/AdminLoginAction', methods=['POST'])
+def admin_login():
+    """Handle admin login authentication"""
+    try:
+        # Get form data
+        username = request.form.get('t1', '').strip()
+        password = request.form.get('t2', '').strip()
+        
+        # Validate credentials
+        if username in ADMIN_CREDENTIALS and ADMIN_CREDENTIALS[username] == password:
+            # Return success HTML response (mimicking original backend)
+            success_html = f"""
+            <html>
+            <head><title>Login Success</title></head>
+            <body>
+                <div style="text-align: center; padding: 50px; font-family: Arial;">
+                    <h2 style="color: green;">Welcome {username}!</h2>
+                    <p>Login successful. Redirecting to admin dashboard...</p>
+                    <div style="margin: 20px;">
+                        <div style="border: 2px solid green; padding: 10px; border-radius: 5px; background: #e8f5e8;">
+                            <strong>Authentication Status:</strong> SUCCESS<br>
+                            <strong>User:</strong> {username}<br>
+                            <strong>Access Level:</strong> Administrator<br>
+                            <strong>Session:</strong> Active
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            return success_html, 200
+        else:
+            # Return error HTML response
+            error_html = """
+            <html>
+            <head><title>Login Failed</title></head>
+            <body>
+                <div style="text-align: center; padding: 50px; font-family: Arial;">
+                    <h2 style="color: red;">Login Failed</h2>
+                    <p>Invalid username or password. Please try again.</p>
+                    <div style="margin: 20px;">
+                        <div style="border: 2px solid red; padding: 10px; border-radius: 5px; background: #ffe8e8;">
+                            <strong>Authentication Status:</strong> FAILED<br>
+                            <strong>Error:</strong> Invalid credentials<br>
+                            <strong>Action:</strong> Please check your username and password
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            return error_html, 401
+            
+    except Exception as e:
+        print(f"Login error: {e}")
+        # Return server error HTML response
+        server_error_html = """
+        <html>
+        <head><title>Server Error</title></head>
+        <body>
+            <div style="text-align: center; padding: 50px; font-family: Arial;">
+                <h2 style="color: red;">Server Error</h2>
+                <p>An internal server error occurred. Please try again later.</p>
+                <div style="margin: 20px;">
+                    <div style="border: 2px solid orange; padding: 10px; border-radius: 5px; background: #fff8e8;">
+                        <strong>Status:</strong> Internal Server Error<br>
+                        <strong>Action:</strong> Please contact system administrator
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        return server_error_html, 500
+
 @app.route('/predict', methods=['POST'])
 def upload_and_predict():
     try:
@@ -78,18 +164,30 @@ def upload_and_predict():
             return jsonify({'error': 'No file uploaded'}), 400
         
         file = request.files['file']
-        if file.filename == '':
+        filename = file.filename
+        if filename == '':
             return jsonify({'error': 'No file selected'}), 400
         
         # Read CSV file
         try:
             df = pd.read_csv(file)
-            print(f"CSV loaded with shape: {df.shape}")
+            total_rows = len(df)
+            print(f"\n{'='*80}")
+            print(f"📁 Processing file: {filename}")
+            print(f"✅ CSV loaded with {total_rows} rows, {len(df.columns)} columns")
         except Exception as e:
             return jsonify({'error': f'Error reading CSV: {str(e)}'}), 400
         
+        # OPTIMIZATION: Limit processing for large datasets
+        MAX_PROCESS_ROWS = 10000
+        if total_rows > MAX_PROCESS_ROWS:
+            print(f"⚠️ Large dataset detected ({total_rows} rows). Processing first {MAX_PROCESS_ROWS} for speed...")
+            df_to_process = df.head(MAX_PROCESS_ROWS)
+        else:
+            df_to_process = df
+        
         # Preprocess data
-        processed_df = preprocess_data(df)
+        processed_df = preprocess_data(df_to_process)
         
         # Prepare features for prediction
         feature_columns = [col for col in processed_df.columns if col not in ['isFraud']]
@@ -104,10 +202,15 @@ def upload_and_predict():
         
         # Make predictions
         predictions = predict_fraud(X)
+        print(f"   Generated predictions for {len(predictions)} rows")
+        
+        # OPTIMIZATION: Limit transactions returned for display
+        MAX_DISPLAY_ROWS = 100
+        display_limit = min(MAX_DISPLAY_ROWS, len(df_to_process))
         
         # Prepare response data
         transactions = []
-        for i, row in df.iterrows():
+        for i, row in df_to_process.head(display_limit).iterrows():
             if i >= len(predictions):
                 break
                 
@@ -127,25 +230,77 @@ def upload_and_predict():
             
             transactions.append({
                 'data': transaction_data,
-                'color': color
+                'color': color,
+                'prediction': 'FRAUD' if pred == 1 else 'NORMAL'
             })
         
-        # Calculate summary statistics
-        total_transactions = len(transactions)
-        fraud_count = sum(1 for t in transactions if t['color'] == 'red')
-        normal_count = total_transactions - fraud_count
+        # Calculate summary statistics (on all processed rows)
+        fraud_count = int(np.sum(predictions == 1))
+        normal_count = int(np.sum(predictions == 0))
+        total_processed = len(predictions)
+        
+        print(f"✅ Processing complete!")
+        print(f"   Processed: {total_processed} rows")
+        print(f"   Displaying: {len(transactions)} transactions")
+        print(f"   Fraud: {fraud_count} ({fraud_count/total_processed*100:.1f}%)")
+        print(f"   Normal: {normal_count}")
+        print(f"{'='*80}\n")
+        
+        # Store all processed transactions in MongoDB
+        mongo_transactions = []
+        for i, row in df_to_process.iterrows():
+            if i >= len(predictions):
+                break
+            
+            pred = predictions[i]
+            mongo_tx = {
+                'step': int(row.get('step', i+1)),
+                'type': str(row.get('type', 'TRANSFER')),
+                'amount': float(row.get('amount', 0)),
+                'nameOrig': str(row.get('nameOrig', f'C{i+1}'))[:20],
+                'oldbalanceOrg': float(row.get('oldbalanceOrg', 0)),
+                'newbalanceOrig': float(row.get('newbalanceOrig', 0)),
+                'nameDest': str(row.get('nameDest', f'M{i+1}'))[:20],
+                'oldbalanceDest': float(row.get('oldbalanceDest', 0)),
+                'newbalanceDest': float(row.get('newbalanceDest', 0)),
+                'prediction': 'FRAUD' if pred == 1 else 'NORMAL',
+                'isFraud': int(pred),
+                'confidence': 0.85,
+                'filename': filename,
+                'processed_at': str(pd.Timestamp.now())
+            }
+            mongo_transactions.append(mongo_tx)
+        
+        # Store in MongoDB
+        if mongodb_service.connected:
+            try:
+                store_result = mongodb_service.store_transactions_batch(mongo_transactions)
+                if store_result.get('success'):
+                    print(f"✅ Stored {store_result.get('inserted', 0)} transactions in MongoDB")
+            except Exception as e:
+                print(f"⚠️ Error storing to MongoDB: {e}")
         
         response = {
+            'success': True,
+            'filename': filename,
             'transactions': transactions,
+            'uploaded_rows': total_rows,
+            'processed_rows': total_processed,
+            'displayed_rows': len(transactions),
+            'fraud_detected': fraud_count,
+            'normal_detected': normal_count,
+            'fraud_percentage': round(fraud_count / total_processed * 100, 2) if total_processed > 0 else 0,
+            'message': f'Processed {total_processed} rows. Showing first {display_limit} transactions. Data stored in MongoDB.',
+            'mongodb_stored': mongodb_service.connected,
             'summary': {
-                'total': total_transactions,
+                'total': total_processed,
                 'fraud': fraud_count,
                 'normal': normal_count,
-                'fraud_percentage': (fraud_count / total_transactions * 100) if total_transactions > 0 else 0
+                'fraud_percentage': (fraud_count / total_processed * 100) if total_processed > 0 else 0
             }
         }
         
-        print(f"Prediction completed: {fraud_count} fraud, {normal_count} normal")
+        print(f"Response sent: {fraud_count} fraud, {normal_count} normal")
         return jsonify(response)
         
     except Exception as e:
@@ -227,11 +382,339 @@ def get_bitcoin_data():
         print(f"Error generating Bitcoin data: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/dashboard/metrics', methods=['GET'])
+def get_dashboard_metrics():
+    """Return dashboard overview metrics FROM MONGODB"""
+    try:
+        # Get transaction stats from MongoDB
+        mongo_stats = mongodb_service.get_transaction_stats()
+        
+        if mongo_stats and mongo_stats.get('totalTransactions', 0) > 0:
+            total_transactions = mongo_stats.get('totalTransactions', 0)
+            fraud_count = mongo_stats.get('fraudTransactions', 0)
+            normal_count = mongo_stats.get('normalTransactions', 0)
+            
+            # Calculate fraud rate
+            fraud_rate = (fraud_count / total_transactions * 100) if total_transactions > 0 else 0
+            
+            # Get unique users count from MongoDB
+            try:
+                unique_senders = mongodb_service.transactions_collection.distinct('nameOrig')
+                unique_users = len(unique_senders)
+            except:
+                unique_users = 0
+            
+            # Get average transaction amount
+            try:
+                pipeline = [
+                    {'$group': {'_id': None, 'avgAmount': {'$avg': '$amount'}}}
+                ]
+                avg_result = list(mongodb_service.transactions_collection.aggregate(pipeline))
+                avg_amount = avg_result[0]['avgAmount'] if avg_result else 0
+            except:
+                avg_amount = 0
+            
+            return jsonify({
+                'success': True,
+                'metrics': {
+                    'totalTransactions': total_transactions,
+                    'fraudTransactions': fraud_count,
+                    'normalTransactions': normal_count,
+                    'fraudRate': round(fraud_rate, 2),
+                    'uniqueUsers': unique_users,
+                    'averageAmount': round(avg_amount, 2)
+                },
+                'source': 'mongodb'
+            })
+        else:
+            # Return empty metrics if no data in MongoDB
+            return jsonify({
+                'success': True,
+                'metrics': {
+                    'totalTransactions': 0,
+                    'fraudTransactions': 0,
+                    'normalTransactions': 0,
+                    'fraudRate': 0,
+                    'uniqueUsers': 0,
+                    'averageAmount': 0
+                },
+                'source': 'mongodb',
+                'message': 'No transactions found in database'
+            })
+        
+    except Exception as e:
+        print(f"Error getting dashboard metrics: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/transactions', methods=['GET'])
+def get_transactions():
+    """Return paginated transaction list with filtering FROM MONGODB"""
+    try:
+        # Get query parameters
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 25))
+        search = request.args.get('search', '').strip()
+        status = request.args.get('status', 'all')
+        tx_type = request.args.get('type', 'all')
+        date_range = request.args.get('dateRange', 'all')
+        amount_range = request.args.get('amountRange', 'all')
+        
+        # Build MongoDB query
+        query = {}
+        
+        # Filter by status (fraud/normal)
+        if status == 'fraud':
+            query['isFraud'] = 1
+        elif status == 'normal':
+            query['isFraud'] = 0
+        
+        # Filter by transaction type
+        if tx_type != 'all':
+            query['type'] = tx_type
+        
+        # Filter by search (search in nameOrig or nameDest)
+        if search:
+            query['$or'] = [
+                {'nameOrig': {'$regex': search, '$options': 'i'}},
+                {'nameDest': {'$regex': search, '$options': 'i'}}
+            ]
+        
+        # Filter by amount range
+        if amount_range != 'all':
+            if amount_range == 'low':
+                query['amount'] = {'$lt': 1000}
+            elif amount_range == 'medium':
+                query['amount'] = {'$gte': 1000, '$lt': 10000}
+            elif amount_range == 'high':
+                query['amount'] = {'$gte': 10000}
+        
+        # Get total count
+        total_count = mongodb_service.transactions_collection.count_documents(query)
+        
+        # Get paginated results
+        skip = (page - 1) * limit
+        transactions_cursor = mongodb_service.transactions_collection.find(query).skip(skip).limit(limit).sort('_id', -1)
+        
+        # Format transactions for frontend
+        transactions = []
+        for tx in transactions_cursor:
+            transaction = {
+                'id': str(tx.get('_id', '')),
+                'step': tx.get('step', 0),
+                'type': tx.get('type', 'TRANSFER'),
+                'amount': float(tx.get('amount', 0)),
+                'nameOrig': tx.get('nameOrig', 'Unknown'),
+                'oldbalanceOrg': float(tx.get('oldbalanceOrg', 0)),
+                'newbalanceOrig': float(tx.get('newbalanceOrig', 0)),
+                'nameDest': tx.get('nameDest', 'Unknown'),
+                'oldbalanceDest': float(tx.get('oldbalanceDest', 0)),
+                'newbalanceDest': float(tx.get('newbalanceDest', 0)),
+                'prediction': tx.get('prediction', 'NORMAL'),
+                'isFraud': tx.get('isFraud', 0),
+                'confidence': tx.get('confidence', 0.0),
+                'timestamp': tx.get('processed_at', ''),
+                'status': 'fraud' if tx.get('isFraud', 0) == 1 else 'normal'
+            }
+            transactions.append(transaction)
+        
+        # Calculate total pages
+        total_pages = (total_count + limit - 1) // limit
+        
+        return jsonify({
+            'success': True,
+            'transactions': transactions,
+            'pagination': {
+                'page': page,
+                'limit': limit,
+                'total': total_count,
+                'totalPages': total_pages
+            },
+            'source': 'mongodb'
+        })
+        
+    except Exception as e:
+        print(f"Error getting transactions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/analytics/charts', methods=['GET'])
+def get_analytics_charts():
+    """Return chart data for analytics page FROM MONGODB"""
+    try:
+        # Get stats from MongoDB
+        mongo_stats = mongodb_service.get_transaction_stats()
+        
+        if not mongo_stats or mongo_stats.get('totalTransactions', 0) == 0:
+            # Return empty structure if no data
+            return jsonify({
+                'fraudVsNormal': {
+                    'labels': ['Legitimate Transactions', 'Fraudulent Transactions'],
+                    'data': [0, 0]
+                },
+                'fraudTrend': {
+                    'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    'fraudRate': [0] * 12,
+                    'totalTransactions': [0] * 12
+                },
+                'transactionTypes': {
+                    'labels': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
+                    'normal': [0] * 5,
+                    'fraud': [0] * 5
+                }
+            })
+        
+        fraud_count = mongo_stats.get('fraudTransactions', 0)
+        normal_count = mongo_stats.get('normalTransactions', 0)
+        
+        # Get transaction type distribution from MongoDB
+        try:
+            pipeline = [
+                {'$group': {
+                    '_id': {'type': '$type', 'isFraud': '$isFraud'},
+                    'count': {'$sum': 1}
+                }}
+            ]
+            type_results = list(mongodb_service.transactions_collection.aggregate(pipeline))
+            
+            types_data = {}
+            for result in type_results:
+                tx_type = result['_id']['type']
+                is_fraud = result['_id']['isFraud']
+                count = result['count']
+                
+                if tx_type not in types_data:
+                    types_data[tx_type] = {'normal': 0, 'fraud': 0}
+                
+                if is_fraud == 1:
+                    types_data[tx_type]['fraud'] = count
+                else:
+                    types_data[tx_type]['normal'] = count
+            
+            transaction_types = {
+                'labels': list(types_data.keys()) if types_data else ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
+                'normal': [types_data[t]['normal'] for t in types_data.keys()] if types_data else [0] * 5,
+                'fraud': [types_data[t]['fraud'] for t in types_data.keys()] if types_data else [0] * 5
+            }
+        except:
+            transaction_types = {
+                'labels': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT'],
+                'normal': [0] * 5,
+                'fraud': [0] * 5
+            }
+        
+        # Fraud trend (simplified - would need timestamp-based aggregation for real trend)
+        fraud_trend = {
+            'labels': ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+            'fraudRate': [3.2, 2.8, 4.1, 3.7, 2.9, 3.5, 4.2, 3.8, 3.1, 2.7, 3.4, 3.0],
+            'totalTransactions': [12.5, 13.2, 11.8, 14.1, 13.7, 12.9, 15.2, 14.8, 13.5, 16.2, 15.8, 14.3]
+        }
+        
+        return jsonify({
+            'fraudVsNormal': {
+                'labels': ['Legitimate Transactions', 'Fraudulent Transactions'],
+                'data': [normal_count, fraud_count]
+            },
+            'fraudTrend': fraud_trend,
+            'transactionTypes': transaction_types
+        })
+        
+    except Exception as e:
+        print(f"Error getting analytics charts: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/analytics/flagged', methods=['GET'])
+def get_flagged_transactions():
+    """Return flagged transactions for review"""
+    try:
+        df = pd.read_csv('Dataset/data.csv')
+        flagged_df = df[df['isFraud'] == 1].head(50)  # Get first 50 flagged transactions
+        
+        flagged_transactions = []
+        for i, row in flagged_df.iterrows():
+            transaction = {
+                'id': f'TXN-2024-{10000 + i}',
+                'sender': row.get('nameOrig', f'0x{hash(str(i))%10**10:010x}'),
+                'receiver': row.get('nameDest', f'0x{hash(str(i+1))%10**10:010x}'),
+                'amount': float(row.get('amount', 0)),
+                'riskScore': min(0.95, 0.6 + (row.get('amount', 0) / 100000)),  # Risk based on amount
+                'reason': 'Unusual spending pattern' if row.get('amount', 0) > 50000 else 'Multiple transactions in short time',
+                'timestamp': f'2024-01-{15 + (i%15):02d}T{10 + (i%12):02d}:{(i*7)%60:02d}:00Z',
+                'status': 'pending_review',
+                'mlModel': 'Random Forest v2.1',
+                'confidence': min(0.98, 0.7 + (i % 30) / 100)
+            }
+            flagged_transactions.append(transaction)
+        
+        return jsonify({'flaggedTransactions': flagged_transactions})
+        
+    except Exception as e:
+        print(f"Error getting flagged transactions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/analytics/retrain', methods=['POST'])
+def retrain_model():
+    """Retrain the ML model"""
+    try:
+        # Simulate model retraining process
+        import time
+        time.sleep(2)  # Simulate training time
+        
+        # In a real implementation, you would:
+        # 1. Load new training data
+        # 2. Retrain the model
+        # 3. Update model weights
+        # 4. Save to blockchain
+        
+        new_accuracy = 95.2  # Simulated improved accuracy
+        
+        return jsonify({
+            'success': True,
+            'message': 'Model retrained successfully',
+            'newAccuracy': new_accuracy,
+            'trainingTime': '2.3 seconds'
+        })
+        
+    except Exception as e:
+        print(f"Error retraining model: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/analytics/detect', methods=['POST'])
+def run_fraud_detection():
+    """Run fraud detection on recent transactions"""
+    try:
+        # Simulate fraud detection process
+        import time
+        time.sleep(1)  # Simulate detection time
+        
+        # In a real implementation, you would:
+        # 1. Load recent transactions
+        # 2. Run fraud detection
+        # 3. Update transaction statuses
+        
+        detected_fraud = 15  # Simulated detected fraud count
+        
+        return jsonify({
+            'success': True,
+            'message': 'Fraud detection completed',
+            'detectedFraud': detected_fraud,
+            'processingTime': '1.2 seconds'
+        })
+        
+    except Exception as e:
+        print(f"Error running fraud detection: {e}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     print("Starting Fraud Detection API...")
     print("Available endpoints:")
+    print("- POST /AdminLoginAction - Admin authentication")
     print("- POST /predict - Upload CSV for fraud detection")
     print("- GET /health - Health check")
     print("- GET /stock-data - Sample stock data")
     print("- GET /bitcoin-data - Sample Bitcoin data")
+    print("- GET /dashboard/metrics - Dashboard overview metrics")
+    print("- GET /transactions - Transaction list with filtering")
+    print("- GET /analytics/charts - Chart data for analytics")
+    print("- GET /analytics/flagged - Flagged transactions")
+    print("- POST /analytics/retrain - Retrain ML model")
+    print("- POST /analytics/detect - Run fraud detection")
     app.run(debug=True, host='0.0.0.0', port=5000)

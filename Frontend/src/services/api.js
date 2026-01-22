@@ -37,6 +37,10 @@ class ApiService {
     return this.request(`/transactions?${searchParams}`);
   }
 
+  async getTransactionTypes() {
+    return this.request('/api/transaction-types');
+  }
+
   // Analytics APIs
   async getAnalyticsCharts() {
     return this.request('/analytics/charts');

@@ -311,6 +311,34 @@ def upload_and_predict():
 def health_check():
     return jsonify({'status': 'healthy', 'message': 'Fraud detection API is running'})
 
+@app.route('/api/transaction-types', methods=['GET'])
+def get_transaction_types():
+    """Get distinct transaction types from MongoDB"""
+    try:
+        if not mongodb_service.connected:
+            return jsonify({'types': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT']})
+        
+        # Get distinct transaction types from MongoDB
+        types = mongodb_service.transactions_collection.distinct('transactionType')
+        
+        # Filter out None/null values
+        types = [t for t in types if t]
+        
+        # If no types found, return defaults
+        if not types:
+            types = ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT']
+        
+        print(f"📊 Available transaction types: {types}")
+        
+        return jsonify({
+            'success': True,
+            'types': sorted(types),
+            'count': len(types)
+        })
+    except Exception as e:
+        print(f"Error getting transaction types: {e}")
+        return jsonify({'types': ['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT']})
+
 @app.route('/debug/mongodb', methods=['GET'])
 def debug_mongodb():
     """Debug endpoint to check MongoDB data"""

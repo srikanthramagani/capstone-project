@@ -12,6 +12,23 @@ const TransactionFilters = ({ onFiltersChange, onRefresh, filters: externalFilte
     dateRange: 'all'
   });
 
+  const [transactionTypes, setTransactionTypes] = useState([]);
+
+  // Fetch transaction types from backend
+  useEffect(() => {
+    const fetchTransactionTypes = async () => {
+      try {
+        const data = await apiService.getTransactionTypes();
+        setTransactionTypes(data.types || []);
+      } catch (error) {
+        console.error('Error fetching transaction types:', error);
+        // Fallback to hardcoded types
+        setTransactionTypes(['TRANSFER', 'PAYMENT', 'CASH_OUT', 'CASH_IN', 'DEBIT']);
+      }
+    };
+    fetchTransactionTypes();
+  }, []);
+
   // Sync with external filters
   useEffect(() => {
     if (externalFilters) {
@@ -110,11 +127,9 @@ const TransactionFilters = ({ onFiltersChange, onRefresh, filters: externalFilte
             onChange={(e) => handleFilterChange('type', e.target.value)}
           >
             <option value="all">All Types</option>
-            <option value="transfer">Transfer</option>
-            <option value="payment">Payment</option>
-            <option value="cash_out">Cash Out</option>
-            <option value="cash_in">Cash In</option>
-            <option value="debit">Debit</option>
+            {transactionTypes.map(type => (
+              <option key={type} value={type}>{type}</option>
+            ))}
           </Select>
 
           {/* Amount Range */}
